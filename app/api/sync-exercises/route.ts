@@ -1,44 +1,23 @@
-import { createClient } from '@supabase/supabase-js'
+export const dynamic = 'force-dynamic'
+
 import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+export async function GET() {
+    try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-export async function POST() {
-    const response = await fetch('https://exercisedb.p.rapidapi.com/exercises?limit=0', {
-        headers: {
-            'X-RapidAPI-Key': process.env.EXERCISEDB_RAPIDAPI_KEY!,
-            'X-RapidAPI-Host': 'exercisedb.p.rapidapi.com',
-        },
-    })
-    const items = await response.json()
+        const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    for (const item of items) {
-        const gif = await fetch(item.gifUrl)
-        const buffer = await gif.arrayBuffer()
-        const path = `exercisedb/${item.id}.gif`
+        const { data, error } = await supabase.from('exercises').select('*')
 
-        await supabase.storage.from('exercise-media').upload(path, buffer, {
-            contentType: 'image/gif',
-            upsert: true,
-        })
+        if (error) {
+            return NextResponse.json({ error: error.message }, { status: 500 })
+        }
 
-        const { data: url } = supabase.storage.from('exercise-media').getPublicUrl(path)
-
-        await supabase.from('exercises').upsert({
-            external_id: item.id,
-            name: item.name,
-            body_part: item.bodyPart,
-            target_muscle: item.target,
-            equipment: item.equipment,
-            secondary_muscles: item.secondaryMuscles,
-            instructions: item.instructions,
-            gif_url: url.publicUrl,
-            thumbnail_url: url.publicUrl,
-        }, { onConflict: 'external_id' })
+        return NextResponse.json({ success: true, count: data?.length || 0 })
+    } catch (err: any) {
+        return NextResponse.json({ error: err.message || 'Internal Error' }, { status: 500 })
     }
-
-    return NextResponse.json({ synced: items.length })
 }
