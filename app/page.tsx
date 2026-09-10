@@ -6,6 +6,9 @@ import { Plus, Trash2, TrendingUp, Save, CheckCircle2, History, LogOut, X } from
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
+// دالة آمنة لتوليد معرف فريد تمنع كراش المتصفح والـ Hydration
+const generateId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36)
+
 type WorkoutSet = {
   id: string
   weight: string | number
@@ -31,6 +34,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [successMessage, setSuccessMessage] = useState(false)
   const [username, setUsername] = useState<string | null>(null)
+  const [isMounted, setIsMounted] = useState(false)
 
   // حالات خاصة بالـ Graph Modal
   const [activeGraphExercise, setActiveGraphExercise] = useState<{ name: string; history: PastWorkout[] } | null>(null)
@@ -38,6 +42,7 @@ export default function Home() {
   const router = useRouter()
 
   useEffect(() => {
+    setIsMounted(true)
     const savedName = localStorage.getItem('gym_username')
     if (!savedName) {
       router.push('/login')
@@ -54,37 +59,39 @@ export default function Home() {
   const handleSelectExercise = async (exercise: any) => {
     if (selectedExercises.some((e) => e.id === exercise.id)) return
 
-    const supabase = createClient()
     let pastWorkouts: PastWorkout[] = []
 
     try {
-      const { data, error } = await supabase
-        .from('workout_logs')
-        .select('created_at, exercises_data')
-        .eq('user_id', username)
-        .order('created_at', { ascending: false })
+      const supabase = createClient()
+      if (supabase && username) {
+        const { data, error } = await supabase
+          .from('workout_logs')
+          .select('created_at, exercises_data')
+          .eq('user_id', username)
+          .order('created_at', { ascending: false })
 
-      if (!error && data) {
-        for (const log of data) {
-          const exercisesList = log.exercises_data as any[]
-          const found = exercisesList?.find((ex: any) => ex.id === exercise.id)
+        if (!error && data) {
+          for (const log of data) {
+            const exercisesList = log.exercises_data as any[]
+            const found = exercisesList?.find((ex: any) => ex.id === exercise.id)
 
-          if (found && found.sets) {
-            const formattedDate = new Date(log.created_at).toLocaleDateString('ar-DZ', {
-              month: 'short',
-              day: 'numeric',
-            })
+            if (found && found.sets) {
+              const formattedDate = new Date(log.created_at).toLocaleDateString('ar-DZ', {
+                month: 'short',
+                day: 'numeric',
+              })
 
-            pastWorkouts.push({
-              date: formattedDate,
-              sets: found.sets.map((s: any) => ({
-                id: crypto.randomUUID(),
-                weight: s.weight,
-                reps: s.reps
-              }))
-            })
+              pastWorkouts.push({
+                date: formattedDate,
+                sets: found.sets.map((s: any) => ({
+                  id: generateId(),
+                  weight: s.weight,
+                  reps: s.reps
+                }))
+              })
 
-            if (pastWorkouts.length >= 5) break // نجيبو حتى لـ 5 حصص سابقة للرسم البياني
+              if (pastWorkouts.length >= 5) break
+            }
           }
         }
       }
@@ -96,7 +103,7 @@ export default function Home() {
       ...prev,
       {
         ...exercise,
-        sets: [{ id: crypto.randomUUID(), weight: '', reps: '' }],
+        sets: [{ id: generateId(), weight: '', reps: '' }],
         past_workouts: pastWorkouts
       }
     ])
@@ -112,7 +119,7 @@ export default function Home() {
         if (ex.id === exerciseId) {
           return {
             ...ex,
-            sets: [...(ex.sets || []), { id: crypto.randomUUID(), weight: '', reps: '' }]
+            sets: [...(ex.sets || []), { id: generateId(), weight: '', reps: '' }]
           }
         }
         return ex
@@ -188,7 +195,14 @@ export default function Home() {
     }
   }
 
-  if (!username) return null
+  // منع مشاكل الـ Hydration حتى يكتمل التحميل في المتصفح
+  if (!isMounted || !username) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-black text-white">
+        <div className="text-sm text-zinc-500 animate-pulse">جاري التحميل...</div>
+      </main>
+    )
+  }
 
   return (
     <main className="flex min-h-screen flex-col items-center p-4 md:p-6 bg-black text-white pb-20">
@@ -229,7 +243,6 @@ export default function Home() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {/* عرض صورة التمرين بدقة */}
                     <div className="relative h-12 w-12 rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden flex-shrink-0 flex items-center justify-center">
                       {exercise.thumbnail_url ? (
                         <img
@@ -391,11 +404,10 @@ export default function Home() {
                         <span className="text-amber-400 font-bold">أقصى وزن: {maxWeight} كغ</span>
                       </div>
 
-                      {/* شريط مرئي يعبر عن الوزن كـ Progress Bar تفاعلي */}
                       <div className="space-y-1">
                         {item.sets.map((s, sIdx) => {
                           const w = Number(s.weight) || 0
-                          const percentage = Math.min(Math.max((w / 150) * 100, 5), 100) // افتراض أن 150كغ هي النسبة القصوى للشريط
+                          const percentage = Math.min(Math.max((w / 150) * 100, 5), 100)
                           return (
                             <div key={s.id || sIdx} className="space-y-1">
                               <div className="flex justify-between text-[10px] text-zinc-500">
