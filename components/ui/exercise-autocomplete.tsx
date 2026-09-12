@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import Image from 'next/image'
-import { Search } from 'lucide-react'
+import { Search, Dumbbell, Activity } from 'lucide-react'
 import { useDebounce } from '@/hooks/use-debounce'
 import { createClient } from '@/lib/supabase/client'
 
@@ -17,6 +16,7 @@ export function ExerciseAutocomplete({ onSelect }: { onSelect: (exercise: Exerci
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<ExerciseResult[]>([])
     const [open, setOpen] = useState(false)
+    const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
     const inputRef = useRef<HTMLInputElement>(null)
     const debouncedQuery = useDebounce(query, 150)
 
@@ -54,9 +54,13 @@ export function ExerciseAutocomplete({ onSelect }: { onSelect: (exercise: Exerci
         inputRef.current?.focus()
     }
 
+    const handleImageError = (id: string) => {
+        setImageErrors((prev) => ({ ...prev, [id]: true }))
+    }
+
     return (
         <div className="relative w-full">
-            <div className="flex w-full items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 focus-within:border-amber-500 transition-colors">
+            <div className="flex w-full items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 px-3.5 focus-within:border-amber-500/80 transition-all shadow-inner">
                 <Search className="h-4 w-4 text-zinc-500 shrink-0 pointer-events-none" />
                 <input
                     ref={inputRef}
@@ -65,41 +69,63 @@ export function ExerciseAutocomplete({ onSelect }: { onSelect: (exercise: Exerci
                     onFocus={() => {
                         if (results.length > 0) setOpen(true)
                     }}
-                    placeholder="Search exercise (e.g. Hack Squat, Bench, Curl...)"
-                    className="w-full bg-transparent py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+                    placeholder="Search exercise (e.g. Incline Bench, Curl...)"
+                    className="w-full bg-transparent py-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
                 />
             </div>
 
             {open && (
-                <div className="absolute left-0 right-0 top-full mt-2 border border-zinc-800 bg-zinc-950 p-1 max-h-[320px] overflow-y-auto z-50 rounded-lg shadow-2xl space-y-1">
+                <div className="absolute left-0 right-0 top-full mt-2 border border-zinc-800/90 bg-zinc-950 p-1.5 max-h-[340px] overflow-y-auto z-50 rounded-2xl shadow-2xl space-y-1 backdrop-blur-xl">
                     {results.length === 0 ? (
-                        <div className="px-3 py-4 text-center text-sm text-zinc-500">No exercises found</div>
+                        <div className="px-3 py-4 text-center text-xs text-zinc-500 flex items-center justify-center gap-2">
+                            <Activity className="h-4 w-4 text-zinc-600 animate-pulse" />
+                            <span>لم يتم العثور على أي تمرين matching</span>
+                        </div>
                     ) : (
-                        results.map((exercise) => (
-                            <button
-                                key={exercise.id}
-                                type="button"
-                                onMouseDown={(e) => {
-                                    e.preventDefault() // يمنع فقدان التركيز من الـ input عند الضغط
-                                    handleSelect(exercise)
-                                }}
-                                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-zinc-900 transition-colors cursor-pointer"
-                            >
-                                <div className="relative h-12 w-12 shrink-0 rounded-lg overflow-hidden border border-zinc-800 bg-zinc-900">
-                                    <Image
-                                        src={exercise.thumbnail_url ?? '/placeholder-exercise.png'}
-                                        alt={exercise.name}
-                                        fill
-                                        sizes="48px"
-                                        className="object-cover"
-                                    />
-                                </div>
-                                <div className="flex flex-col text-left">
-                                    <span className="text-sm font-medium text-zinc-100">{exercise.name}</span>
-                                    <span className="text-xs text-zinc-500">{exercise.target_muscle}</span>
-                                </div>
-                            </button>
-                        ))
+                        results.map((exercise) => {
+                            const hasImage = exercise.thumbnail_url && !imageErrors[exercise.id]
+
+                            return (
+                                <button
+                                    key={exercise.id}
+                                    type="button"
+                                    onMouseDown={(e) => {
+                                        e.preventDefault()
+                                        handleSelect(exercise)
+                                    }}
+                                    className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-zinc-900/90 border border-transparent hover:border-zinc-800 transition-all cursor-pointer group"
+                                >
+                                    {/* إطار الرسوم التوضيحية / GIF */}
+                                    <div className="relative h-11 w-11 shrink-0 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900 flex items-center justify-center shadow-md group-hover:border-amber-500/40 transition-colors">
+                                        {hasImage ? (
+                                            <img
+                                                src={exercise.thumbnail_url!}
+                                                alt={exercise.name}
+                                                onError={() => handleImageError(exercise.id)}
+                                                className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                            />
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center gap-0.5 text-zinc-600 group-hover:text-amber-400 transition-colors">
+                                                <Dumbbell className="h-4 w-4" />
+                                                <span className="text-[8px] font-black tracking-tighter uppercase">FIT</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* تفاصيل التمرين */}
+                                    <div className="flex flex-col text-left">
+                                        <span className="text-sm font-semibold text-zinc-200 group-hover:text-amber-400 transition-colors line-clamp-1">
+                                            {exercise.name}
+                                        </span>
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                            <span className="text-[10px] font-medium text-amber-400/80 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                                                {exercise.target_muscle}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </button>
+                            )
+                        })
                     )}
                 </div>
             )}
